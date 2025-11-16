@@ -1,0 +1,845 @@
+---
+title: "Análise Exploratória do ENANI 2019: Padrões Alimentares e Nutricionais Infantis no Brasil"
+author: "Steffano Pereira"
+date: "`r Sys.Date()`"
+bibliography: references.bib
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: show
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6,
+  dpi = 300
+)
+```
+
+# Introdução {.tabset}
+
+## Declaração do Problema
+
+A alimentação infantil adequada é fundamental para o desenvolvimento físico e cognitivo das crianças brasileiras. No Brasil, existem grandes disparidades regionais e socioeconômicas que afetam diretamente a qualidade da alimentação e o estado nutricional infantil. Compreender os padrões alimentares das crianças brasileiras, especialmente nos primeiros anos de vida, é crucial para:
+
+- **Identificar grupos em risco nutricional**
+- **Avaliar práticas de aleitamento materno**
+- **Detectar consumo excessivo de alimentos ultraprocessados**
+- **Orientar políticas públicas de saúde infantil**
+
+Este projeto é relevante porque oferece insights baseados em dados para melhorar a saúde pública infantil no Brasil.
+
+## Abordagem Metodológica
+
+Este projeto utilizará o **ENANI 2019** (Estudo Nacional de Alimentação e Nutrição Infantil) [@enani2019], um conjunto de dados representativo nacional que contém informações detalhadas sobre:
+
+- Características demográficas e socioeconômicas
+- Padrões de alimentação e consumo alimentar
+- Dados antropométricos (peso, altura)
+- Informações de saúde materna e infantil
+
+A metodologia empregada inclui:
+
+1. **Importação e limpeza dos dados** brutos do CSV
+2. **Tratamento de valores ausentes** (NAs)
+3. **Seleção de variáveis relevantes** para análise nutricional
+4. **Criação de novas variáveis** (índices nutricionais, categorias)
+5. **Análise exploratória** através de visualizações e estatísticas
+6. **Análise de correlações** entre alimentação, região e saúde
+
+## Técnica Proposta
+
+Utilizaremos técnicas de **ciência de dados exploratória** com foco em:
+
+- Manipulação de dados com `tidyverse`
+- Visualizações informativas com `ggplot2`
+- Estatísticas descritivas e inferenciais
+- Análise de padrões regionais e socioeconômicos
+
+Esta abordagem permitirá identificar padrões não evidentes nos dados brutos e gerar insights acionáveis.
+
+---
+
+# Pacotes Requeridos
+
+```{r pacotes}
+# Manipulação de dados
+library(tidyverse)    # Conjunto de pacotes para ciência de dados (dplyr, ggplot2, etc)
+library(data.table)   # Leitura eficiente de arquivos grandes
+
+# Limpeza e transformação
+library(janitor)      # Limpeza de nomes de colunas e dados
+library(lubridate)    # Manipulação de datas
+
+# Visualização
+library(ggplot2)      # Gráficos avançados
+library(scales)       # Formatação de escalas em gráficos
+library(patchwork)    # Combinação de múltiplos gráficos
+library(viridis)      # Paletas de cores acessíveis
+
+# Tabelas e resumos
+library(knitr)        # Tabelas formatadas
+library(kableExtra)   # Tabelas HTML estilizadas
+library(summarytools) # Estatísticas descritivas
+
+# Análise
+library(corrplot)     # Matrizes de correlação
+library(skimr)        # Resumo rápido de dados
+```
+---
+
+# Preparação dos Dados
+
+## Fonte dos Dados
+
+**Fonte Original:** [ENANI 2019 - Kaggle](https://www.kaggle.com/datasets/marcelosilva2604/enani-2019) [@kaggle_enani]
+
+**Descrição da Fonte:**
+
+O **ENANI 2019** (Estudo Nacional de Alimentação e Nutrição Infantil) [@enani2019] foi conduzido pelo Ministério da Saúde do Brasil em parceria com universidades brasileiras. O estudo teve como objetivo:
+
+- **Propósito**: Avaliar o estado nutricional e os padrões alimentares de crianças brasileiras menores de 5 anos
+- **Período de coleta**: 2019
+- **Amostra**: Aproximadamente 14.559 crianças de todas as regiões do Brasil
+- **Variáveis originais**: 741 variáveis cobrindo dados demográficos, socioeconômicos, alimentares, antropométricos e de saúde
+- **Peculiaridades**: 
+  - Dados anonimizados (IDs com sufixo "_anon")
+  - Muitos valores ausentes (NA) devido à natureza modular da pesquisa
+  - Múltiplos tipos de dados (numéricos, categóricos, datas)
+  - Codificação específica para respostas (ex: "Sim", "Não", códigos numéricos)
+
+```{r importacao}
+# Caminho do arquivo
+arquivo <- "data/data_bioq_calib_anon_1a.csv"
+
+# Leitura do arquivo CSV (usando data.table para eficiência)
+dados_raw <- fread(arquivo, encoding = "UTF-8")
+```
+
+**Dimensões do Dataset Original:**
+
+```{r dimensoes_originais}
+tibble(
+  Métrica = c("Número de Linhas", "Número de Colunas"),
+  Valor = c(nrow(dados_raw), ncol(dados_raw))
+) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Limpeza e Transformação dos Dados
+
+### Etapa 1: Inspeção Inicial e Seleção de Variáveis
+
+#### Dimensões do Dataset
+
+```{r inspecao_inicial}
+# Análise de valores ausentes
+na_percent <- colSums(is.na(dados_raw)) / nrow(dados_raw) * 100
+na_top20 <- head(sort(na_percent, decreasing = TRUE), 20)
+
+# Criar tabela informativa
+tibble(
+  dimensao = c("Linhas (registros)", "Colunas (variáveis)"),
+  valor = c(nrow(dados_raw), ncol(dados_raw))
+) %>%
+  kable(caption = "Dimensões do Dataset Bruto ENANI 2019") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+#### Análise de Valores Ausentes
+
+```{r analise_nas}
+# Top 20 colunas com mais NAs
+tibble(
+  variavel = names(na_top20),
+  percentual_na = round(na_top20, 1)
+) %>%
+  kable(caption = "Top 20 Variáveis com Maior Percentual de NAs") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+**Justificativa da limpeza**: Com 741 variáveis, precisamos selecionar apenas as mais relevantes para análise nutricional. Focaremos em:
+
+- Variáveis demográficas e geográficas
+- Dados da criança (idade, sexo)
+- Padrões alimentares (aleitamento, consumo alimentar)
+- Dados antropométricos (peso, altura)
+- Informações socioeconômicas
+
+```{r selecao_variaveis}
+# Seleção de variáveis relevantes para análise nutricional
+dados_limpo <- dados_raw %>%
+  select(
+    # Identificadores
+    id_anon, id_domic_anon,
+    
+    # Geografia
+    a00_regiao, a11_situacao,
+    
+    # Dados da criança
+    b02_sexo, b04_idade, b05a_idade_em_meses,
+    
+    # Alimentação infantil (primeiros 2 anos)
+    e01_leite_peito, e02_agua, e11_suco, e12_fruta_inteira,
+    e16_comida_sal, e21_arroz, e26_feijao, e27_carne,
+    e31_salgadinhos, e33_refrigerante, e36_bala,
+    
+    # Dados de nascimento e saúde
+    h01_semanas_gravidez, h02_peso, h03_altura, h04_parto,
+    h05_chupeta_usou,
+    
+    # Dados antropométricos atuais (buscando padrões de coluna)
+    matches("peso.*atual|altura.*atual|imc", ignore.case = TRUE)
+  )
+```
+
+#### Resumo da Seleção
+
+```{r resumo_selecao}
+tibble(
+  metrica = c("Variáveis selecionadas", "Registros mantidos", "Taxa de redução"),
+  valor = c(
+    paste0(ncol(dados_limpo), " de ", ncol(dados_raw)),
+    nrow(dados_limpo),
+    paste0(round((1 - ncol(dados_limpo)/ncol(dados_raw)) * 100, 1), "%")
+  )
+) %>%
+  kable(caption = "Resumo da Seleção de Variáveis") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+### Etapa 2: Limpeza de Nomes de Colunas
+
+```{r limpeza_nomes}
+# Padronização de nomes de colunas
+dados_limpo <- dados_limpo %>%
+  clean_names() %>%  # Remove caracteres especiais e padroniza
+  rename(
+    regiao = a00_regiao,
+    situacao = a11_situacao,
+    sexo = b02_sexo,
+    idade_anos = b04_idade,
+    idade_meses = b05a_idade_em_meses,
+    leite_materno = e01_leite_peito,
+    agua = e02_agua,
+    suco = e11_suco,
+    fruta = e12_fruta_inteira,
+    comida_sal = e16_comida_sal,
+    arroz = e21_arroz,
+    feijao = e26_feijao,
+    carne = e27_carne,
+    salgadinho = e31_salgadinhos,
+    refrigerante = e33_refrigerante,
+    bala = e36_bala,
+    semanas_gestacao = h01_semanas_gravidez,
+    peso_nascer = h02_peso,
+    altura_nascer = h03_altura,
+    tipo_parto = h04_parto,
+    usou_chupeta = h05_chupeta_usou
+  )
+```
+
+#### Exemplo de Nomes Padronizados
+
+```{r exemplo_nomes}
+tibble(
+  nome_padronizado = head(names(dados_limpo), 20)
+) %>%
+  kable(caption = "Primeiras 20 Variáveis com Nomes Padronizados") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+### Etapa 3: Tratamento de Valores Ausentes e Tipos de Dados
+
+#### Conversão de Tipos
+
+```{r tratamento_nas}
+# Conversão de tipos de dados
+dados_limpo <- dados_limpo %>%
+  mutate(
+    # Conversão de fatores
+    regiao = as.factor(regiao),
+    situacao = as.factor(situacao),
+    sexo = as.factor(sexo),
+    
+    # Conversão de variáveis numéricas
+    idade_anos = as.numeric(idade_anos),
+    idade_meses = as.numeric(str_extract(idade_meses, "\\d+")), # O dado é em formato de string (ex.: "22 meses"), extraimos apenas o número
+    peso_nascer = as.numeric(peso_nascer),
+    altura_nascer = as.numeric(altura_nascer),
+    semanas_gestacao = as.numeric(semanas_gestacao),
+    
+    # Conversão de variáveis binárias (Sim/Não)
+    across(c(leite_materno, agua, suco, fruta, comida_sal, 
+             arroz, feijao, carne, salgadinho, refrigerante, bala),
+           ~case_when(
+             . == "Sim" ~ TRUE,
+             . == "Não" ~ FALSE,
+             TRUE ~ NA
+           ))
+  )
+```
+
+#### Verificação da Extração de Idade
+
+```{r verificacao_idade}
+# Exemplos de valores extraídos
+dados_limpo %>% 
+  select(id_anon, idade_meses) %>% 
+  head(10) %>%
+  kable(caption = "Exemplos de Idade em Meses Extraída") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r resumo_idade}
+# Estatísticas descritivas
+tibble(
+  estatistica = c("Mínimo", "1º Quartil", "Mediana", "Média", "3º Quartil", "Máximo", "NAs"),
+  valor = c(
+    min(dados_limpo$idade_meses, na.rm = TRUE),
+    quantile(dados_limpo$idade_meses, 0.25, na.rm = TRUE),
+    median(dados_limpo$idade_meses, na.rm = TRUE),
+    round(mean(dados_limpo$idade_meses, na.rm = TRUE), 1),
+    quantile(dados_limpo$idade_meses, 0.75, na.rm = TRUE),
+    max(dados_limpo$idade_meses, na.rm = TRUE),
+    sum(is.na(dados_limpo$idade_meses))
+  )
+) %>%
+  kable(caption = "Estatísticas Descritivas de Idade em Meses") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+#### Estatísticas de Valores Ausentes
+
+```{r estatisticas_nas}
+na_summary <- dados_limpo %>%
+  summarise(across(everything(), ~sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "variavel", values_to = "n_nas") %>%
+  mutate(perc_nas = round(n_nas / nrow(dados_limpo) * 100, 1)) %>%
+  arrange(desc(perc_nas)) %>%
+  filter(perc_nas > 10)
+
+na_summary %>%
+  kable(caption = "Variáveis com Mais de 10% de Valores Ausentes") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+**Decisões sobre NAs**: Manteremos os NAs por enquanto, pois muitas variáveis são contextuais (ex: perguntas sobre alimentação aplicadas apenas a certas idades). Análises específicas filtrarão conforme necessário.
+
+### Etapa 4: Criação de Novas Variáveis
+
+```{r novas_variaveis}
+# Criação de variáveis derivadas e categóricas
+dados_limpo <- dados_limpo %>%
+  mutate(
+    # Faixa etária
+    faixa_etaria = case_when(
+      idade_meses < 6 ~ "0-5 meses",
+      idade_meses < 12 ~ "6-11 meses",
+      idade_meses < 24 ~ "12-23 meses",
+      idade_meses < 36 ~ "24-35 meses",
+      idade_meses < 48 ~ "36-47 meses",
+      TRUE ~ "48-59 meses"
+    ) %>% factor(levels = c("0-5 meses", "6-11 meses", "12-23 meses", 
+                             "24-35 meses", "36-47 meses", "48-59 meses")),
+    
+    # Classificação de peso ao nascer
+    classificacao_peso_nascer = case_when(
+      peso_nascer < 2500 ~ "Baixo peso",
+      peso_nascer >= 2500 & peso_nascer < 4000 ~ "Adequado",
+      peso_nascer >= 4000 ~ "Macrossomia",
+      TRUE ~ "Não informado"
+    ) %>% factor(levels = c("Baixo peso", "Adequado", "Macrossomia", "Não informado")),
+    
+    # Idade gestacional
+    classificacao_gestacao = case_when(
+      semanas_gestacao < 37 ~ "Prematuro",
+      semanas_gestacao >= 37 & semanas_gestacao <= 42 ~ "A termo",
+      semanas_gestacao > 42 ~ "Pós-termo",
+      TRUE ~ "Não informado"
+    ) %>% factor(levels = c("Prematuro", "A termo", "Pós-termo", "Não informado")),
+    
+    # Índice de alimentos saudáveis (soma de alimentos básicos)
+    alimentos_saudaveis = rowSums(select(., arroz, feijao, carne, fruta), na.rm = TRUE),
+    
+    # Índice de alimentos ultraprocessados
+    alimentos_ultraprocessados = rowSums(select(., salgadinho, refrigerante, bala), na.rm = TRUE),
+    
+    # Razão saudável/ultraprocessado
+    razao_alimentar = ifelse(alimentos_ultraprocessados > 0,
+                             alimentos_saudaveis / alimentos_ultraprocessados,
+                             alimentos_saudaveis)
+  )
+```
+
+#### Resumo das Variáveis Criadas
+
+```{r resumo_novas_variaveis}
+tibble(
+  variavel = c("faixa_etaria", "classificacao_peso_nascer", "classificacao_gestacao",
+               "alimentos_saudaveis", "alimentos_ultraprocessados", "razao_alimentar"),
+  tipo = c("Categórica", "Categórica", "Categórica", "Numérica", "Numérica", "Numérica"),
+  descricao = c(
+    "6 faixas etárias (0-5, 6-11, 12-23, 24-35, 36-47, 48-59 meses)",
+    "Baixo peso (<2500g), Adequado, Macrossomia (>4000g) [@oms2021]",
+    "Prematuro (<37sem), A termo, Pós-termo (>42sem) [@oms2021]",
+    "Soma de arroz + feijão + carne + fruta consumidos",
+    "Soma de salgadinho + refrigerante + bala consumidos",
+    "Razão entre alimentos saudáveis e ultraprocessados [@guia_alimentar2021]"
+  )
+) %>%
+  kable(caption = "Variáveis Derivadas Criadas") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+### Etapa 5: Filtros e Dataset Final
+
+```{r dataset_final}
+# Filtrar apenas crianças com dados mínimos essenciais
+dados_final <- dados_limpo %>%
+  filter(
+    !is.na(idade_meses),
+    !is.na(sexo),
+    !is.na(regiao)
+  )
+```
+
+#### Resumo do Dataset Final
+
+```{r resumo_final}
+tibble(
+  metrica = c("Registros após filtros", "Variáveis finais", "Registros removidos"),
+  valor = c(
+    nrow(dados_final),
+    ncol(dados_final),
+    nrow(dados_limpo) - nrow(dados_final)
+  )
+) %>%
+  kable(caption = "Resumo do Dataset Final") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Visualização do Dataset Final
+
+### Amostra dos Dados Limpos
+
+```{r visualizacao_final}
+# Amostra dos dados limpos
+dados_final %>%
+  select(id_anon, regiao, sexo, idade_meses, faixa_etaria,
+         leite_materno, alimentos_saudaveis, alimentos_ultraprocessados) %>%
+  head(20) %>%
+  kable(caption = "Amostra do Dataset ENANI 2019 Limpo") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+```
+
+### Resumo Estatístico Consolidado
+
+#### Distribuições Categóricas
+
+```{r resumo_categoricas}
+# Distribuição por Região
+regiao_dist <- dados_final %>%
+  count(regiao, name = "frequencia") %>%
+  mutate(percentual = round(frequencia / sum(frequencia) * 100, 1))
+
+regiao_dist %>%
+  kable(caption = "Distribuição por Região") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r resumo_sexo}
+# Distribuição por Sexo
+sexo_dist <- dados_final %>%
+  count(sexo, name = "frequencia") %>%
+  mutate(percentual = round(frequencia / sum(frequencia) * 100, 1))
+
+sexo_dist %>%
+  kable(caption = "Distribuição por Sexo") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r resumo_faixa_etaria}
+# Distribuição por Faixa Etária
+faixa_dist <- dados_final %>%
+  count(faixa_etaria, name = "frequencia") %>%
+  mutate(percentual = round(frequencia / sum(frequencia) * 100, 1))
+
+faixa_dist %>%
+  kable(caption = "Distribuição por Faixa Etária") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r resumo_situacao}
+# Distribuição por Situação
+situacao_dist <- dados_final %>%
+  count(situacao, name = "frequencia") %>%
+  mutate(percentual = round(frequencia / sum(frequencia) * 100, 1))
+
+situacao_dist %>%
+  kable(caption = "Distribuição Urbano vs Rural") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+#### Estatísticas de Variáveis Numéricas
+
+```{r resumo_numericas}
+dados_final %>%
+  select(idade_meses, peso_nascer, altura_nascer, semanas_gestacao,
+         alimentos_saudaveis, alimentos_ultraprocessados) %>%
+  summary() %>%
+  kable(caption = "Resumo Estatístico de Variáveis Numéricas") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+**Resumo consolidado**: O dataset final contém aproximadamente 14.500 crianças brasileiras com informações sobre alimentação, dados de nascimento e características demográficas. A maioria das variáveis alimentares apresenta NAs devido à aplicabilidade contextual por idade.
+
+---
+
+# Análise Exploratória dos Dados
+
+## Distribuição Demográfica e Geográfica
+
+### Distribuição por Região e Situação
+
+```{r distribuicao_geografica}
+# Gráfico de distribuição por região
+p1 <- dados_final %>%
+  count(regiao) %>%
+  mutate(regiao = fct_reorder(regiao, n)) %>%
+  ggplot(aes(x = regiao, y = n, fill = regiao)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = n), hjust = -0.2, size = 3.5) +
+  coord_flip() +
+  scale_fill_viridis_d(option = "D") +
+  labs(
+    title = "Distribuição de Crianças por Região do Brasil",
+    subtitle = "ENANI 2019 - Amostra Nacional",
+    x = NULL,
+    y = "Número de Crianças"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+# Gráfico de situação (Urbano/Rural)
+p2 <- dados_final %>%
+  count(situacao) %>%
+  ggplot(aes(x = "", y = n, fill = situacao)) +
+  geom_col(width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = paste0(round(n/sum(n)*100, 1), "%")), 
+            position = position_stack(vjust = 0.5), size = 4) +
+  scale_fill_manual(values = c("#2E7D32", "#FFB300")) +
+  labs(
+    title = "Distribuição Urbano vs Rural",
+    fill = "Situação"
+  ) +
+  theme_void() +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5))
+
+# Combinar gráficos
+p1 + p2 + plot_layout(widths = c(2, 1))
+```
+
+**Insight**: A distribuição geográfica mostra a representatividade da amostra em todas as regiões brasileiras, com predominância urbana refletindo a realidade demográfica do país. Os dados são provenientes do ENANI 2019 [@enani2019], um estudo de base populacional representativo do Brasil.
+
+### Distribuição por Sexo e Faixa Etária
+
+```{r distribuicao_idade_sexo}
+# Pirâmide etária por sexo
+dados_final %>%
+  filter(!is.na(sexo), !is.na(faixa_etaria)) %>%
+  count(sexo, faixa_etaria) %>%
+  mutate(
+    n = ifelse(sexo == "Masculino", -n, n),
+    faixa_etaria = fct_rev(faixa_etaria)
+  ) %>%
+  ggplot(aes(x = faixa_etaria, y = n, fill = sexo)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(
+    labels = function(x) abs(x),
+    breaks = seq(-3000, 3000, 1000)
+  ) +
+  scale_fill_manual(values = c("Feminino" = "#E91E63", "Masculino" = "#2196F3")) +
+  labs(
+    title = "Pirâmide Etária das Crianças por Sexo",
+    subtitle = "Distribuição equilibrada entre os gêneros",
+    x = "Faixa Etária",
+    y = "Número de Crianças",
+    fill = "Sexo"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "bottom"
+  )
+```
+
+**Insight**: A distribuição por sexo é praticamente equilibrada em todas as faixas etárias, indicando boa representatividade da amostra.
+
+## Análise de Nascimento e Saúde Perinatal
+
+### Peso ao Nascer
+
+```{r analise_peso_nascer}
+# Distribuição de peso ao nascer
+p1 <- dados_final %>%
+  filter(!is.na(peso_nascer), peso_nascer > 500, peso_nascer < 6000) %>%
+  ggplot(aes(x = peso_nascer)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 50, fill = "#4CAF50", alpha = 0.7) +
+  geom_density(color = "#1B5E20", linewidth = 1) +
+  geom_vline(xintercept = 2500, linetype = "dashed", color = "red", linewidth = 1) +
+  geom_vline(xintercept = 4000, linetype = "dashed", color = "orange", linewidth = 1) +
+  annotate("text", x = 2500, y = 0.0012, label = "Baixo peso\n(<2500g)", 
+           vjust = -0.5, color = "red", size = 3) +
+  annotate("text", x = 4000, y = 0.0012, label = "Macrossomia\n(>4000g)", 
+           vjust = -0.5, color = "orange", size = 3) +
+  labs(
+    title = "Distribuição de Peso ao Nascer",
+    x = "Peso ao Nascer (gramas)",
+    y = "Densidade"
+  ) +
+  theme_minimal()
+
+# Classificação de peso
+p2 <- dados_final %>%
+  filter(classificacao_peso_nascer != "Não informado") %>%
+  count(classificacao_peso_nascer) %>%
+  mutate(perc = n/sum(n)*100) %>%
+  ggplot(aes(x = "", y = perc, fill = classificacao_peso_nascer)) +
+  geom_col(width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = paste0(round(perc, 1), "%")), 
+            position = position_stack(vjust = 0.5), size = 4) +
+  scale_fill_manual(
+    values = c("Baixo peso" = "#F44336", "Adequado" = "#4CAF50", "Macrossomia" = "#FF9800")
+  ) +
+  labs(
+    title = "Classificação de Peso",
+    fill = "Categoria"
+  ) +
+  theme_void() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+p1 + p2
+```
+
+**Insight**: A maioria das crianças nasce com peso adequado, mas há uma proporção significativa com baixo peso ao nascer, indicando vulnerabilidade nutricional desde o início. As classificações seguem os critérios estabelecidos pela OMS [@oms2021], onde peso inferior a 2500g é considerado baixo peso e superior a 4000g caracteriza macrossomia.
+
+### Idade Gestacional e Tipo de Parto
+
+```{r analise_gestacao}
+# Idade gestacional
+p1 <- dados_final %>%
+  filter(!is.na(semanas_gestacao), semanas_gestacao >= 20, semanas_gestacao <= 45) %>%
+  ggplot(aes(x = semanas_gestacao)) +
+  geom_histogram(bins = 30, fill = "#3F51B5", alpha = 0.7, color = "white") +
+  geom_vline(xintercept = 37, linetype = "dashed", color = "red", linewidth = 1) +
+  geom_vline(xintercept = 42, linetype = "dashed", color = "orange", linewidth = 1) +
+  annotate("text", x = 34, y = 800, label = "Prematuro", color = "red", size = 3.5) +
+  annotate("text", x = 39.5, y = 800, label = "A termo", color = "darkgreen", size = 3.5) +
+  labs(
+    title = "Distribuição de Idade Gestacional",
+    x = "Semanas de Gestação",
+    y = "Frequência"
+  ) +
+  theme_minimal()
+
+# Tipo de parto por região
+p2 <- dados_final %>%
+  filter(!is.na(tipo_parto), !is.na(regiao)) %>%
+  count(regiao, tipo_parto) %>%
+  group_by(regiao) %>%
+  mutate(perc = n/sum(n)*100) %>%
+  ggplot(aes(x = regiao, y = perc, fill = tipo_parto)) +
+  geom_col(position = "dodge") +
+  geom_text(aes(label = paste0(round(perc, 0), "%")), 
+            position = position_dodge(width = 0.9), vjust = -0.5, size = 3) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Tipo de Parto por Região",
+    x = "Região",
+    y = "Percentual (%)",
+    fill = "Tipo de Parto"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+p1 / p2
+```
+
+**Insight**: A prevalência de cesarianas é notável em todas as regiões, reflexo da alta taxa brasileira de partos cirúrgicos. A classificação da idade gestacional segue os parâmetros da OMS [@oms2021], com gestações inferiores a 37 semanas consideradas prematuras e superiores a 42 semanas classificadas como pós-termo.
+
+## Análise de Padrões Alimentares
+
+### Aleitamento Materno
+
+```{r analise_aleitamento}
+# Aleitamento materno por faixa etária
+dados_final %>%
+  filter(!is.na(leite_materno), !is.na(faixa_etaria)) %>%
+  count(faixa_etaria, leite_materno) %>%
+  group_by(faixa_etaria) %>%
+  mutate(perc = n/sum(n)*100) %>%
+  filter(leite_materno == TRUE) %>%
+  ggplot(aes(x = faixa_etaria, y = perc, group = 1)) +
+  geom_line(color = "#E91E63", linewidth = 1.5) +
+  geom_point(color = "#E91E63", size = 4) +
+  geom_text(aes(label = paste0(round(perc, 1), "%")), vjust = -1, size = 3.5) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20)) +
+  labs(
+    title = "Prevalência de Aleitamento Materno por Faixa Etária",
+    subtitle = "Redução esperada com o aumento da idade",
+    x = "Faixa Etária",
+    y = "Percentual com Aleitamento Materno (%)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+**Insight**: O aleitamento materno apresenta redução progressiva com a idade, padrão esperado mas que evidencia a necessidade de políticas de incentivo à amamentação prolongada. A OMS recomenda aleitamento materno exclusivo até os 6 meses e continuado até os 2 anos ou mais [@oms2021].
+
+### Consumo de Alimentos Saudáveis vs Ultraprocessados
+
+```{r analise_alimentos}
+# Comparação de consumo por faixa etária
+dados_final %>%
+  filter(!is.na(faixa_etaria)) %>%
+  group_by(faixa_etaria) %>%
+  summarise(
+    saudaveis = mean(alimentos_saudaveis, na.rm = TRUE),
+    ultraprocessados = mean(alimentos_ultraprocessados, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = c(saudaveis, ultraprocessados), 
+               names_to = "tipo", values_to = "media") %>%
+  ggplot(aes(x = faixa_etaria, y = media, fill = tipo)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(
+    values = c("saudaveis" = "#4CAF50", "ultraprocessados" = "#F44336"),
+    labels = c("Alimentos Saudáveis", "Ultraprocessados")
+  ) +
+  labs(
+    title = "Média de Consumo: Alimentos Saudáveis vs Ultraprocessados",
+    subtitle = "Por faixa etária",
+    x = "Faixa Etária",
+    y = "Média de Alimentos Consumidos",
+    fill = "Tipo"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+```
+
+**Insight**: O consumo de ultraprocessados aumenta com a idade, indicando necessidade de intervenções educativas para famílias com crianças maiores. O Guia Alimentar para Crianças Brasileiras [@guia_alimentar2021] recomenda evitar alimentos ultraprocessados e priorizar alimentos in natura ou minimamente processados na alimentação infantil.
+
+### Padrões Regionais de Alimentação
+
+```{r analise_regional_alimentacao}
+# Criar dataset para análise regional
+dados_regional <- dados_final %>%
+  filter(!is.na(regiao)) %>%
+  group_by(regiao) %>%
+  summarise(
+    n_total = n(),
+    leite_materno_perc = mean(leite_materno, na.rm = TRUE) * 100,
+    fruta_perc = mean(fruta, na.rm = TRUE) * 100,
+    feijao_perc = mean(feijao, na.rm = TRUE) * 100,
+    refrigerante_perc = mean(refrigerante, na.rm = TRUE) * 100,
+    salgadinho_perc = mean(salgadinho, na.rm = TRUE) * 100
+  )
+
+# Heatmap de consumo por região
+dados_regional %>%
+  select(-n_total) %>%
+  pivot_longer(-regiao, names_to = "alimento", values_to = "percentual") %>%
+  mutate(
+    alimento = case_when(
+      alimento == "leite_materno_perc" ~ "Leite Materno",
+      alimento == "fruta_perc" ~ "Frutas",
+      alimento == "feijao_perc" ~ "Feijão",
+      alimento == "refrigerante_perc" ~ "Refrigerante",
+      alimento == "salgadinho_perc" ~ "Salgadinho"
+    )
+  ) %>%
+  ggplot(aes(x = alimento, y = regiao, fill = percentual)) +
+  geom_tile(color = "white", linewidth = 1) +
+  geom_text(aes(label = paste0(round(percentual, 0), "%")), 
+            color = "white", fontface = "bold", size = 4) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(
+    title = "Padrões Alimentares por Região",
+    subtitle = "Percentual de consumo de diferentes alimentos",
+    x = NULL,
+    y = NULL,
+    fill = "Percentual (%)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+```
+
+**Insight**: Existem diferenças regionais significativas nos padrões alimentares, com algumas regiões apresentando maior consumo de ultraprocessados.
+
+## Análise de Correlações
+
+```{r analise_correlacoes}
+# Matriz de correlação
+dados_corr <- dados_final %>%
+  select(
+    idade_meses, peso_nascer, altura_nascer, semanas_gestacao,
+    alimentos_saudaveis, alimentos_ultraprocessados, razao_alimentar
+  ) %>%
+  na.omit() %>%
+  cor()
+
+# Visualização da matriz de correlação
+corrplot(dados_corr, 
+         method = "color",
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         number.cex = 0.8,
+         col = colorRampPalette(c("#F44336", "white", "#4CAF50"))(200),
+         title = "Matriz de Correlação entre Variáveis",
+         mar = c(0,0,2,0))
+```
+
+**Insight**: As correlações revelam relações esperadas (peso e altura ao nascer) e insights sobre a relação entre idade e padrões alimentares.
+
+---
+
+# Referências
+
+<div id="refs"></div>
+
+---
+
+<div style="text-align: center; padding: 20px; background-color: #f5f5f5; border-radius: 10px; margin-top: 30px;">
+  <h3>📊 Projeto desenvolvido para a disciplina de Computação para Análise de Dados</h3>
+  <p><strong>Steffano Pereira</strong> | Novembro 2025</p>
+  <p style="color: #666;">Análise realizada com R, tidyverse e ggplot2</p>
+</div>
